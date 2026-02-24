@@ -1,42 +1,62 @@
 <?php
 include 'db.php';
+include 'utils.php';
 
 // รับ id จาก URL
 $id = $_GET['id'] ?? null;
-if (!$id) {
-    header("Location: index.php");
-    exit;
+if (!$id || !is_numeric($id)) {
+    redirect('index.php');
 }
 
-// ดึงข้อมูลสมาชิกจาก DB
-$stmt = $conn->prepare("SELECT * FROM members WHERE id=?");
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$result = $stmt->get_result();
-$member = $result->fetch_assoc();
+// ดึงข้อมูลผู้สมัครจาก DB
+$runner = get_runner_by_id($conn, $id);
 
-if (!$member) {
-    header("Location: index.php");
-    exit;
+if (!$runner) {
+    redirect('index.php');
 }
 
 // ถ้ามีการส่ง form
 if ($_POST) {
-    $fullname = $_POST['fullname'];
-    $email = $_POST['email'];
-    $major = $_POST['major'];
-    $study_year = $_POST['study_year'];
+    $fullname = sanitize_input($_POST['fullname']);
+    $email = sanitize_input($_POST['email']);
+    $phone = sanitize_input($_POST['phone']);
+    $gender = sanitize_input($_POST['gender']);
+    $birth_date = sanitize_input($_POST['birth_date']);
+    $emergency_contact = sanitize_input($_POST['emergency_contact']);
+    $emergency_phone = sanitize_input($_POST['emergency_phone']);
+    $tshirt_size = sanitize_input($_POST['tshirt_size']);
+    $distance = sanitize_input($_POST['distance']);
 
-    // ตรวจสอบอีเมล
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    // ตรวจสอบข้อมูล
+    if (empty($fullname) || !validate_name($fullname)) {
+        $error = "กรุณากรอกชื่อ-นามสกุลให้ถูกต้อง (ตัวอักษรเท่านั้น)";
+    } elseif (empty($email) || !validate_email($email)) {
         $error = "รูปแบบอีเมลไม่ถูกต้อง";
+    } elseif (empty($phone) || !validate_phone($phone)) {
+        $error = "กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (เริ่มต้นด้วย 0 ตามด้วยตัวเลข 9 หลัก)";
+    } elseif (empty($gender)) {
+        $error = "กรุณาเลือกเพศ";
+    } elseif (empty($birth_date) || !validate_date($birth_date)) {
+        $error = "กรุณากรอกวันเดือนปีเกิดให้ถูกต้อง";
+    } elseif (empty($emergency_contact)) {
+        $error = "กรุณากรอกชื่อผู้ติดต่อฉุกเฉิน";
+    } elseif (empty($emergency_phone) || !validate_phone($emergency_phone)) {
+        $error = "กรุณากรอกเบอร์โทรศัพท์ฉุกเฉินให้ถูกต้อง (เริ่มต้นด้วย 0 ตามด้วยตัวเลข 9 หลัก)";
+    } elseif (empty($tshirt_size)) {
+        $error = "กรุณาเลือกไซส์เสื้อ";
+    } elseif (empty($distance)) {
+        $error = "กรุณาเลือกระยะทางแข่งขัน";
+    } elseif (email_exists_excluding_id($conn, $email, $id)) {
+        $error = "อีเมลนี้มีผู้ใช้งานแล้ว";
     } else {
-        $stmt = $conn->prepare("UPDATE members SET fullname=?, email=?, major=?, study_year=? WHERE id=?");
-        $stmt->bind_param("sssii", $fullname, $email, $major, $study_year, $id);
-        $stmt->execute();
-
-        header("Location: index.php");
-        exit;
+        $stmt = $conn->prepare("UPDATE runners SET fullname=?, email=?, phone=?, gender=?, birth_date=?, emergency_contact=?, emergency_phone=?, tshirt_size=?, distance=? WHERE id=?");
+        $stmt->bind_param("sssssssssi", $fullname, $email, $phone, $gender, $birth_date, $emergency_contact, $emergency_phone, $tshirt_size, $distance, $id);
+        
+        if ($stmt->execute()) {
+            redirect('index.php');
+        } else {
+            $error = "เกิดข้อผิดพลาดในการอัปเดตข้อมูล";
+        }
     }
 }
 ?>
@@ -47,7 +67,7 @@ if ($_POST) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>แก้ไขสมาชิก DevClub</title>
+    <title>แก้ไขข้อมูลผู้สมัครวิ่งมาราธอน - Bangkok Marathon 2025</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -164,6 +184,11 @@ if ($_POST) {
             font-weight: 600;
             font-size: 0.85rem;
         }
+        
+        .section-divider {
+            border-top: 2px dashed #dee2e6;
+            margin: 1.5rem 0;
+        }
     </style>
 </head>
 
@@ -178,12 +203,12 @@ if ($_POST) {
 
     <div class="container mt-4">
         <div class="row justify-content-center">
-            <div class="col-lg-8">
+            <div class="col-lg-10">
                 <div class="card shadow-lg fade-in">
                     <div class="card-header text-center">
                         <h4 class="mb-0">
-                            <i class="bi bi-pencil-square"></i> แก้ไขข้อมูลสมาชิก
-                            <span class="member-id ms-2">#<?= $member['id'] ?></span>
+                            <i class="bi bi-pencil-square"></i> แก้ไขข้อมูลผู้สมัครวิ่งมาราธอน
+                            <span class="member-id ms-2">#<?= $runner['id'] ?></span>
                         </h4>
                     </div>
                     <div class="card-body p-4">
@@ -196,55 +221,128 @@ if ($_POST) {
                         <?php endif; ?>
 
                         <form method="post" class="row g-4">
+                            <!-- Personal Information Section -->
+                            <div class="col-12">
+                                <h5 class="text-primary mb-3"><i class="bi bi-person-bounding-box me-2"></i>ข้อมูลส่วนตัว</h5>
+                            </div>
+                            
                             <div class="col-md-6">
-                                <label class="form-label">ชื่อ-นามสกุล</label>
+                                <label class="form-label">ชื่อ-นามสกุล <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0">
                                         <i class="bi bi-person-fill text-primary"></i>
                                     </span>
                                     <input type="text" name="fullname" class="form-control border-start-0" 
                                            placeholder="เช่น สุนทร คำพา" maxlength="100" required
-                                           value="<?= htmlspecialchars($member['fullname']) ?>">
+                                           value="<?= htmlspecialchars($runner['fullname']) ?>">
                                 </div>
                             </div>
                             
                             <div class="col-md-6">
-                                <label class="form-label">อีเมล</label>
+                                <label class="form-label">อีเมล <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0">
                                         <i class="bi bi-envelope-fill text-primary"></i>
                                     </span>
                                     <input type="email" name="email" class="form-control border-start-0" 
                                            placeholder="เช่น sunthon@example.com" maxlength="100" required
-                                           value="<?= htmlspecialchars($member['email']) ?>">
+                                           value="<?= htmlspecialchars($runner['email']) ?>">
                                 </div>
                             </div>
                             
                             <div class="col-md-6">
-                                <label class="form-label">สาขาที่ศึกษา</label>
+                                <label class="form-label">เบอร์โทรศัพท์ <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0">
-                                        <i class="bi bi-mortarboard-fill text-primary"></i>
+                                        <i class="bi bi-telephone-fill text-primary"></i>
                                     </span>
-                                    <input type="text" name="major" class="form-control border-start-0" 
-                                           placeholder="เช่น วิทยาการคอมพิวเตอร์" maxlength="100" required
-                                           value="<?= htmlspecialchars($member['major']) ?>">
+                                    <input type="tel" name="phone" class="form-control border-start-0" 
+                                           placeholder="เช่น 0812345678" maxlength="10" required
+                                           value="<?= htmlspecialchars($runner['phone']) ?>">
                                 </div>
                             </div>
                             
                             <div class="col-md-6">
-                                <label class="form-label">ปีการศึกษา (พ.ศ.)</label>
+                                <label class="form-label">เพศ <span class="text-danger">*</span></label>
+                                <select name="gender" class="form-select" required>
+                                    <option value="" <?= $runner['gender'] == '' ? 'selected' : '' ?>>เลือกเพศ</option>
+                                    <option value="ชาย" <?= $runner['gender'] == 'ชาย' ? 'selected' : '' ?>>ชาย</option>
+                                    <option value="หญิง" <?= $runner['gender'] == 'หญิง' ? 'selected' : '' ?>>หญิง</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label class="form-label">วันเดือนปีเกิด <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0">
                                         <i class="bi bi-calendar-fill text-primary"></i>
                                     </span>
-                                    <input type="number" name="study_year" class="form-control border-start-0" 
-                                           placeholder="เช่น 2567" min="2500" max="2600" required
-                                           value="<?= $member['study_year'] ?>">
+                                    <input type="date" name="birth_date" class="form-control border-start-0" 
+                                           required value="<?= $runner['birth_date'] ?>">
                                 </div>
                             </div>
                             
-                            <div class="col-12 mt-3">
+                            <hr class="section-divider">
+                            
+                            <!-- Emergency Contact Section -->
+                            <div class="col-12">
+                                <h5 class="text-warning mb-3"><i class="bi bi-exclamation-triangle me-2"></i>ข้อมูลติดต่อฉุกเฉิน</h5>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label class="form-label">ชื่อผู้ติดต่อฉุกเฉิน <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light border-end-0">
+                                        <i class="bi bi-person-lines-fill text-warning"></i>
+                                    </span>
+                                    <input type="text" name="emergency_contact" class="form-control border-start-0" 
+                                           placeholder="ชื่อ-นามสกุลผู้ติดต่อ" maxlength="100" required
+                                           value="<?= htmlspecialchars($runner['emergency_contact']) ?>">
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label class="form-label">เบอร์โทรฉุกเฉิน <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light border-end-0">
+                                        <i class="bi bi-telephone-fill text-warning"></i>
+                                    </span>
+                                    <input type="tel" name="emergency_phone" class="form-control border-start-0" 
+                                           placeholder="เช่น 0812345678" maxlength="10" required
+                                           value="<?= htmlspecialchars($runner['emergency_phone']) ?>">
+                                </div>
+                            </div>
+                            
+                            <hr class="section-divider">
+                            
+                            <!-- Race Details Section -->
+                            <div class="col-12">
+                                <h5 class="text-success mb-3"><i class="bi bi-shoe-prints me-2"></i>รายละเอียดการแข่งขัน</h5>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label class="form-label">ระยะทางแข่งขัน <span class="text-danger">*</span></label>
+                                <select name="distance" class="form-select" required>
+                                    <option value="" <?= $runner['distance'] == '' ? 'selected' : '' ?>>เลือกระยะทาง</option>
+                                    <option value="Full Marathon (42km)" <?= $runner['distance'] == 'Full Marathon (42km)' ? 'selected' : '' ?>>Full Marathon (42km)</option>
+                                    <option value="Half Marathon (21km)" <?= $runner['distance'] == 'Half Marathon (21km)' ? 'selected' : '' ?>>Half Marathon (21km)</option>
+                                    <option value="Fun Run (5km)" <?= $runner['distance'] == 'Fun Run (5km)' ? 'selected' : '' ?>>Fun Run (5km)</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label class="form-label">ไซส์เสื้อ <span class="text-danger">*</span></label>
+                                <select name="tshirt_size" class="form-select" required>
+                                    <option value="" <?= $runner['tshirt_size'] == '' ? 'selected' : '' ?>>เลือกไซส์เสื้อ</option>
+                                    <option value="S" <?= $runner['tshirt_size'] == 'S' ? 'selected' : '' ?>>S</option>
+                                    <option value="M" <?= $runner['tshirt_size'] == 'M' ? 'selected' : '' ?>>M</option>
+                                    <option value="L" <?= $runner['tshirt_size'] == 'L' ? 'selected' : '' ?>>L</option>
+                                    <option value="XL" <?= $runner['tshirt_size'] == 'XL' ? 'selected' : '' ?>>XL</option>
+                                    <option value="XXL" <?= $runner['tshirt_size'] == 'XXL' ? 'selected' : '' ?>>XXL</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-12 mt-4">
                                 <div class="d-grid gap-2 d-md-flex justify-content-md-center">
                                     <button type="submit" class="btn btn-update flex-fill">
                                         <i class="bi bi-check-circle-fill me-2"></i> อัปเดตข้อมูล
@@ -263,5 +361,4 @@ if ($_POST) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-
 </html>

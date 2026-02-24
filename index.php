@@ -1,8 +1,19 @@
 <?php
 include 'db.php';
-$sql = "SELECT * FROM members ORDER BY id ASC";
-$result = $conn->query($sql);
+
+try {
+    $sql = "SELECT * FROM runners ORDER BY id ASC";
+    $result = $conn->query($sql);
+    
+    if (!$result) {
+        throw new Exception("Error fetching runners: " . $conn->error);
+    }
+} catch (Exception $e) {
+    die("Database error: " . $e->getMessage());
+}
+
 $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
+$delete_error = isset($_GET['error']) && $_GET['error'] == 'delete_failed';
 ?>
 
 <!DOCTYPE html>
@@ -173,11 +184,11 @@ $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand fw-bold" href="#">
-                <i class="bi bi-code-slash"></i> DevClub Members
+                <i class="bi bi-shoeprints"></i> Bangkok Marathon 2025
             </a>
             <div class="d-flex align-items-center text-white">
                 <i class="bi bi-people-fill me-2"></i>
-                <span>ระบบจัดการสมาชิก</span>
+                <span>ระบบลงทะเบียนวิ่งมาราธอน</span>
             </div>
         </div>
     </nav>
@@ -186,18 +197,26 @@ $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
         <?php if ($deleted): ?>
             <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
                 <i class="bi bi-check-circle-fill me-2"></i>
-                ลบข้อมูลสมาชิกเรียบร้อยแล้ว!
+                ลบข้อมูลผู้สมัครวิ่งมาราธอนเรียบร้อยแล้ว!
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+                
+        <?php if ($delete_error): ?>
+            <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                เกิดข้อผิดพลาดในการลบข้อมูลผู้สมัคร!
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         <?php endif; ?>
         
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h3 class="fw-bold text-dark page-title">
-                <i class="bi bi-people-fill"></i> รายชื่อสมาชิก 
+                <i class="bi bi-people-fill"></i> รายชื่อผู้สมัครวิ่งมาราธอน 
                 <span class="counter-badge"><?= $result->num_rows ?></span>
             </h3>
             <a href="add.php" class="btn btn-add shadow-lg">
-                <i class="bi bi-person-plus-fill"></i> เพิ่มสมาชิกใหม่
+                <i class="bi bi-person-plus-fill"></i> ลงทะเบียนผู้สมัครใหม่
             </a>
         </div>
 
@@ -210,8 +229,8 @@ $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
                                 <th class="text-center" style="width: 80px;">รหัส</th>
                                 <th>ชื่อ-นามสกุล</th>
                                 <th>อีเมล</th>
-                                <th>สาขา</th>
-                                <th class="text-center" style="width: 120px;">ปีการศึกษา</th>
+                                <th>เบอร์โทร</th>
+                                <th class="text-center" style="width: 120px;">ระยะทาง</th>
                                 <th class="text-center" style="width: 180px;">จัดการ</th>
                             </tr>
                         </thead>
@@ -238,13 +257,13 @@ $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
                                         </td>
                                         <td>
                                             <span class="badge bg-info-subtle text-info-emphasis">
-                                                <i class="bi bi-mortarboard-fill me-1"></i>
-                                                <?= htmlspecialchars($row['major']) ?>
+                                                <i class="bi bi-telephone-fill me-1"></i>
+                                                <?= htmlspecialchars($row['phone']) ?>
                                             </span>
                                         </td>
                                         <td class="text-center">
                                             <span class="badge bg-success-subtle text-success-emphasis">
-                                                <?= $row['study_year'] ?>
+                                                <?= htmlspecialchars($row['distance']) ?>
                                             </span>
                                         </td>
                                         <td class="text-center">
@@ -253,7 +272,7 @@ $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
                                                     <i class="bi bi-pencil-square"></i> แก้ไข
                                                 </a>
                                                 <a href="delete.php?id=<?= $row['id'] ?>" class="btn btn-action btn-delete"
-                                                    onclick="return confirm('ยืนยันลบสมาชิก \n\'<?= htmlspecialchars($row['fullname']) ?>\'?')">
+                                                    onclick="return confirm('ยืนยันลบผู้สมัครวิ่งมาราธอน \n\'<?= htmlspecialchars($row['fullname']) ?>\'?')">
                                                     <i class="bi bi-trash-fill"></i> ลบ
                                                 </a>
                                             </div>
@@ -264,8 +283,8 @@ $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
                                 <tr>
                                     <td colspan="6" class="text-center py-5 empty-state">
                                         <i class="bi bi-person-x"></i>
-                                        <h4 class="mt-3">ไม่มีข้อมูลสมาชิก</h4>
-                                        <p class="text-muted">คลิกที่ปุ่ม "เพิ่มสมาชิกใหม่" เพื่อเพิ่มสมาชิกแรกของคุณ</p>
+                                        <h4 class="mt-3">ไม่มีข้อมูลผู้สมัครวิ่งมาราธอน</h4>
+                                        <p class="text-muted">คลิกที่ปุ่ม "ลงทะเบียนผู้สมัครใหม่" เพื่อลงทะเบียนผู้สมัครคนแรกของคุณ</p>
                                     </td>
                                 </tr>
                             <?php endif; ?>
@@ -276,7 +295,7 @@ $deleted = isset($_GET['deleted']) && $_GET['deleted'] == 'true';
         </div>
 
         <footer class="text-center text-muted mt-4 mb-3">
-            <small>© <?= date('Y') ?> DevClub Members System | พัฒนาด้วย ❤️</small>
+            <small>© <?= date('Y') ?> Bangkok Marathon Registration System | พัฒนาด้วย ❤️</small>
         </footer>
     </div>
 
